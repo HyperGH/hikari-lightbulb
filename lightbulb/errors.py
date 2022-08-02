@@ -21,12 +21,8 @@ __all__ = [
     "LightbulbError",
     "UnsupportedResponseOperation",
     "ApplicationCommandCreationFailed",
-    "CommandNotFound",
     "CommandInvocationError",
     "CommandIsOnCooldown",
-    "ConverterFailure",
-    "NotEnoughArguments",
-    "MissingRequiredAttachmentArgument",
     "MaxConcurrencyLimitReached",
     "CheckFailure",
     "InsufficientCache",
@@ -98,23 +94,9 @@ class ExtensionNotLoaded(LightbulbError):
 
 class CommandAlreadyExists(LightbulbError):
     """
-    Error raised when attempting to add a command to the bot but a name or alias
+    Error raised when attempting to add a command to the bot but a name
     for the command conflicts with a command that already exists.
     """
-
-
-class CommandNotFound(LightbulbError):
-    """
-    Error raised when a command is attempted to be invoked but an implementation
-    is not found. This will only be raised for prefix commands.
-    """
-
-    __slots__ = ("invoked_with",)
-
-    def __init__(self, *args: t.Any, invoked_with: str) -> None:
-        super().__init__(*args)
-        self.invoked_with: str = invoked_with
-        """The name or alias of the command that was used."""
 
 
 class CommandInvocationError(LightbulbError):
@@ -144,51 +126,6 @@ class CommandIsOnCooldown(LightbulbError):
         super().__init__(*args)
         self.retry_after: float = retry_after
         """The amount of time in seconds remaining until the cooldown expires."""
-
-
-class ConverterFailure(LightbulbError):
-    """
-    Error raised when option type conversion fails while prefix command arguments are being parsed.
-    """
-
-    __slots__ = ("option", "raw_value")
-
-    def __init__(self, *args: t.Any, opt: commands.base.OptionLike, raw: str) -> None:
-        super().__init__(*args)
-        self.option: commands.base.OptionLike = opt
-        """The option that could not be converted."""
-        self.raw_value: str = raw
-        """
-        The value that could not be converted.
-        
-        .. versionadded:: 2.2.1
-        """
-
-
-class NotEnoughArguments(LightbulbError):
-    """
-    Error raised when a prefix command expects more options than could be parsed from the user's input.
-    """
-
-    __slots__ = ("missing_options",)
-
-    def __init__(self, *args: t.Any, missing: t.Sequence[commands.base.OptionLike]) -> None:
-        super().__init__(*args)
-        self.missing_options: t.Sequence[commands.base.OptionLike] = missing
-        """The missing options from the command invocation."""
-
-
-class MissingRequiredAttachmentArgument(LightbulbError):
-    """
-    Error raised when a prefix command expects an attachment but none were supplied with the invocation.
-    """
-
-    __slots__ = ("missing_option",)
-
-    def __init__(self, *args: t.Any, missing: commands.base.OptionLike) -> None:
-        super().__init__(*args)
-        self.missing_option: commands.base.OptionLike = missing
-        """The missing attachment option from the command invocation."""
 
 
 class MaxConcurrencyLimitReached(LightbulbError):

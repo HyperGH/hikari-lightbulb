@@ -70,7 +70,8 @@ async def _get_or_fetch_guild_channel_from_id(
 ) -> t.Optional[hikari.GuildChannel]:
     channel = context.app.cache.get_guild_channel(channel_id)
     if channel is None:
-        channel = await context.app.rest.fetch_channel(channel_id)  # type: ignore
+        channel = await context.app.rest.fetch_channel(channel_id)  # type: ignore [assignment]
+        assert isinstance(channel, hikari.GuildChannel)
     return channel
 
 

@@ -26,7 +26,7 @@ import hikari
 from lightbulb.commands import base
 
 
-class MessageCommand(base.ApplicationCommand):
+class MessageCommand(base.Command):
     """
     An implementation of :obj:`~.commands.base.Command` representing a message context menu command.
 

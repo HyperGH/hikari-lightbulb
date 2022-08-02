@@ -22,9 +22,6 @@ __all__ = [
     "owner_only",
     "guild_only",
     "dm_only",
-    "bot_only",
-    "webhook_only",
-    "human_only",
     "nsfw_channel_only",
     "has_roles",
     "has_role_permissions",
@@ -33,7 +30,6 @@ __all__ = [
     "bot_has_guild_permissions",
     "bot_has_role_permissions",
     "bot_has_channel_permissions",
-    "has_attachments",
 ]
 
 import functools
@@ -119,19 +115,17 @@ class Check:
     a boolean or raise a :obj:`.errors.CheckFailure` indicating whether the check passed or failed.
 
     Args:
-        p_callback (CallbackT): Check function to use for prefix commands.
         s_callback (Optional[CallbackT]): Check function to use for slash commands.
         m_callback (Optional[CallbackT]): Check function to use for message commands.
         u_callback (Optional[CallbackT]): Check function to use for user commands.
         add_hook (Optional[Callable[[T], T]]): Function called when the check is added to an object.
     """
 
-    __slots__ = ("prefix_callback", "slash_callback", "message_callback", "user_callback", "add_to_object_hook")
+    __slots__ = ("slash_callback", "message_callback", "user_callback", "add_to_object_hook")
 
     def __init__(
         self,
-        p_callback: _CallbackT,
-        s_callback: t.Optional[_CallbackT] = None,
+        s_callback: _CallbackT,
         m_callback: t.Optional[_CallbackT] = None,
         u_callback: t.Optional[_CallbackT] = None,
         add_hook: t.Optional[
@@ -141,10 +135,9 @@ class Check:
             ]
         ] = None,
     ) -> None:
-        self.prefix_callback = p_callback
-        self.slash_callback = s_callback or p_callback
-        self.message_callback = m_callback or p_callback
-        self.user_callback = u_callback or p_callback
+        self.slash_callback = s_callback
+        self.message_callback = m_callback or s_callback
+        self.user_callback = u_callback or s_callback
         self.add_to_object_hook = add_hook or (lambda o: o)
 
     def __repr__(self) -> str:
@@ -155,14 +148,12 @@ class Check:
 
     @property
     def __name__(self) -> str:
-        if isinstance(self.prefix_callback, functools.partial):
-            return self.prefix_callback.func.__name__
-        return self.prefix_callback.__name__
+        if isinstance(self.slash_callback, functools.partial):
+            return self.slash_callback.func.__name__
+        return self.slash_callback.__name__
 
     def __call__(self, context: context_.base.Context) -> t.Union[bool, t.Coroutine[t.Any, t.Any, bool]]:
-        if isinstance(context, context_.prefix.PrefixContext):
-            return self.prefix_callback(context)
-        elif isinstance(context, context_.slash.SlashContext):
+        if isinstance(context, context_.slash.SlashContext):
             return self.slash_callback(context)
         elif isinstance(context, context_.message.MessageContext):
             return self.message_callback(context)
@@ -189,29 +180,6 @@ def _guild_only(context: context_.base.Context) -> bool:
 def _dm_only(context: context_.base.Context) -> bool:
     if context.guild_id is not None:
         raise errors.OnlyInDM("This command can only be used in DMs")
-    return True
-
-
-def _bot_only(context: context_.base.Context) -> bool:
-    if not context.author.is_bot:
-        raise errors.BotOnly("This command can only be used by bots")
-    return True
-
-
-def _webhook_only(context: context_.base.Context) -> bool:
-    if not isinstance(context, context_.prefix.PrefixContext):
-        raise errors.WebhookOnly("This command can only be used by webhooks")
-    if context.event.message.webhook_id is None:
-        raise errors.WebhookOnly("This command can only be used by webhooks")
-    return True
-
-
-def _human_only(context: context_.base.Context) -> bool:
-    if isinstance(context, context_.prefix.PrefixContext):
-        if context.author.is_bot or context.event.message.webhook_id is not None:
-            raise errors.HumanOnly("This command can only be used by humans")
-    if context.author.is_bot:
-        raise errors.HumanOnly("This command can only be used by humans")
     return True
 
 
@@ -242,10 +210,9 @@ def _has_roles(
 
 
 def _has_guild_permissions(context: context_.base.Context, *, perms: hikari.Permissions) -> bool:
-    if isinstance(context, context_.base.ApplicationContext):
-        cmd = t.cast("commands.base.ApplicationCommand", context.invoked)
-        if (context.guild_id is None and cmd.app_command_dm_enabled) or cmd.app_command_bypass_author_permission_checks:
-            return True
+    cmd = t.cast("commands.base.Command", context.invoked)
+    if (context.guild_id is None and cmd.app_command_dm_enabled) or cmd.app_command_bypass_author_permission_checks:
+        return True
 
     _guild_only(context)
 
@@ -263,10 +230,11 @@ def _has_guild_permissions(context: context_.base.Context, *, perms: hikari.Perm
 
 
 def _has_role_permissions(context: context_.base.Context, *, perms: hikari.Permissions) -> bool:
-    if isinstance(context, context_.base.ApplicationContext):
-        cmd = t.cast("commands.base.ApplicationCommand", context.invoked)
-        if (context.guild_id is None and cmd.app_command_dm_enabled) or cmd.app_command_bypass_author_permission_checks:
-            return True
+    assert context.invoked
+    if (
+        context.guild_id is None and context.invoked.app_command_dm_enabled
+    ) or context.invoked.app_command_bypass_author_permission_checks:
+        return True
 
     _guild_only(context)
 
@@ -280,10 +248,11 @@ def _has_role_permissions(context: context_.base.Context, *, perms: hikari.Permi
 
 
 def _has_channel_permissions(context: context_.base.Context, *, perms: hikari.Permissions) -> bool:
-    if isinstance(context, context_.base.ApplicationContext):
-        cmd = t.cast("commands.base.ApplicationCommand", context.invoked)
-        if (context.guild_id is None and cmd.app_command_dm_enabled) or cmd.app_command_bypass_author_permission_checks:
-            return True
+    assert context.invoked
+    if (
+        context.guild_id is None and context.invoked.app_command_dm_enabled
+    ) or context.invoked.app_command_bypass_author_permission_checks:
+        return True
 
     _guild_only(context)
 
@@ -356,30 +325,12 @@ def _bot_has_channel_permissions(context: context_.base.Context, *, perms: hikar
     return True
 
 
-def _has_attachments(context: context_.base.Context, *, file_exts: t.Sequence[str] = ()) -> bool:
-    if not context.attachments:
-        raise errors.MissingRequiredAttachment("Missing attachment(s) required to run the command")
-
-    if file_exts:
-        for attachment in context.attachments:
-            if not any(attachment.filename.endswith(ext) for ext in file_exts):
-                raise errors.MissingRequiredAttachment("Missing attachment(s) required to run the command")
-
-    return True
-
-
 owner_only = Check(_owner_only)
 """Prevents a command from being used by anyone other than the owner of the application."""
 guild_only = Check(_guild_only)
 """Prevents a command from being used in direct messages."""
 dm_only = Check(_dm_only)
 """Prevents a command from being used in a guild."""
-bot_only = Check(_bot_only)
-"""Prevents a command from being used by anyone other than a bot."""
-webhook_only = Check(_webhook_only)
-"""Prevents a command from being used by anyone other than a webhook."""
-human_only = Check(_human_only)
-"""Prevents a command from being used by anyone other than a human."""
 nsfw_channel_only = Check(_nsfw_channel_only)
 """Prevents a command from being used in any channel other than one marked as NSFW."""
 
@@ -536,23 +487,3 @@ def bot_has_channel_permissions(perm1: hikari.Permissions, *perms: hikari.Permis
     """
     reduced = functools.reduce(operator.or_, [perm1, *perms])
     return Check(functools.partial(_bot_has_channel_permissions, perms=reduced))
-
-
-def has_attachments(*extensions: str) -> Check:
-    """
-    Prevents the command from being used if the invocation message
-    does not include any attachments.
-
-    Args:
-        *extensions (:obj:`str`): If specified, attachments with different file extensions
-            will cause the check to fail.
-
-    Note:
-        If ``extensions`` is specified then all attachments must conform to the restriction.
-    """
-    warnings.warn(
-        "'has_attachments' is deprecated and scheduled for removal in version '2.5.0'. "
-        "Use an option with type 'hikari.Attachment' instead.",
-        DeprecationWarning,
-    )
-    return Check(functools.partial(_has_attachments, file_exts=extensions))

@@ -63,7 +63,7 @@ class SlashGroupMixin(abc.ABC):
 
                     if cmd.name in self._subcommands:
                         raise errors.CommandAlreadyExists(
-                            f"A prefix subcommand with name or alias {cmd.name!r} already exists for group {self.name!r}"
+                            f"A slash subcommand with name or alias {cmd.name!r} already exists for group {self.name!r}"
                         )
                     self._subcommands[cmd.name] = cmd
 
@@ -102,7 +102,7 @@ class SlashGroupMixin(abc.ABC):
                 command.plugin = pl
 
 
-class SlashCommand(base.ApplicationCommand):
+class SlashCommand(base.Command):
     """
     An implementation of :obj:`~.commands.base.Command` representing a slash command.
 

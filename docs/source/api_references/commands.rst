@@ -11,15 +11,6 @@ Base
 
 ----
 
-Prefix Commands
-===============
-
-.. automodule:: lightbulb.commands.prefix
-   :members:
-   :show-inheritance:
-
-----
-
 Slash Commands
 ==============
 

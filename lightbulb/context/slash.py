@@ -30,7 +30,7 @@ if t.TYPE_CHECKING:
     from lightbulb import app as app_
 
 
-class SlashContext(base.ApplicationContext):
+class SlashContext(base.Context):
     """
     An implementation of :obj:`~.context.base.Context` for slash commands.
 
@@ -78,10 +78,6 @@ class SlashContext(base.ApplicationContext):
     @property
     def raw_options(self) -> t.Dict[str, t.Any]:
         return self._options
-
-    @property
-    def prefix(self) -> str:
-        return "/"
 
     @property
     def command(self) -> commands.slash.SlashCommand:

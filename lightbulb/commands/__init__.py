@@ -17,17 +17,10 @@
 # along with Lightbulb. If not, see <https://www.gnu.org/licenses/>.
 
 __all__ = [
-    "ApplicationCommand",
     "Command",
     "CommandLike",
     "MessageCommand",
     "OptionLike",
-    "OptionModifier",
-    "PrefixCommand",
-    "PrefixCommandGroup",
-    "PrefixGroupMixin",
-    "PrefixSubCommand",
-    "PrefixSubGroup",
     "SlashCommand",
     "SlashCommandGroup",
     "SlashGroupMixin",
@@ -39,11 +32,9 @@ __all__ = [
 
 from lightbulb.commands import base
 from lightbulb.commands import message
-from lightbulb.commands import prefix
 from lightbulb.commands import slash
 from lightbulb.commands import user
 from lightbulb.commands.base import *
 from lightbulb.commands.message import *
-from lightbulb.commands.prefix import *
 from lightbulb.commands.slash import *
 from lightbulb.commands.user import *

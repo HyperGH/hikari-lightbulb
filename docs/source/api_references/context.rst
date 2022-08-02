@@ -10,15 +10,6 @@ Base
 
 ----
 
-Prefix Context
-==============
-
-.. automodule:: lightbulb.context.prefix
-   :members:
-   :show-inheritance:
-
-----
-
 Slash Context
 =============
 

@@ -30,7 +30,7 @@ if t.TYPE_CHECKING:
     from lightbulb import app as app_
 
 
-class UserContext(base.ApplicationContext):
+class UserContext(base.Context):
     """
     An implementation of :obj:`~.context.base.Context` for user context menu commands.
 
@@ -76,7 +76,3 @@ class UserContext(base.ApplicationContext):
     def command(self) -> commands.user.UserCommand:
         assert isinstance(self._command, commands.user.UserCommand)
         return self._command
-
-    @property
-    def prefix(self) -> str:
-        return "\N{THREE BUTTON MOUSE}\N{VARIATION SELECTOR-16}"

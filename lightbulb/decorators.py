@@ -24,13 +24,11 @@ __all__ = [
     "add_checks",
     "check_exempt",
     "add_cooldown",
-    "set_help",
     "set_max_concurrency",
     "app_command_permissions",
 ]
 
 import functools
-import inspect
 import typing as t
 
 import hikari
@@ -82,19 +80,12 @@ def command(
         error_handler (Optional[ListenerT]): The function to register as the command's error handler. Defaults to
             ``None``. This can also be set with the :obj:`~.commands.base.CommandLike.set_error_handler`
             decorator.
-        aliases (Sequence[:obj:`str`]): Aliases for the command. This will only affect prefix commands. Defaults
-            to an empty list.
         guilds (Sequence[:obj:`int`]): The guilds that the command will be created in. This will only affect
             application commands. Defaults to an empty list.
-        parser (:obj:`~.utils.parser.BaseParser`): The argument parser to use for prefix commands. Defaults
-            to :obj:`~.utils.parser.Parser`.
         auto_defer (:obj:`bool`): Whether or not to automatically defer the response when the command is invoked. If
-            ``True``, the bot will send an initial response of type ``DEFERRED_MESSAGE_CREATE`` for interactions, and
-            for prefix commands, typing will be triggered in the invocation channel.
+            ``True``, the bot will send an initial response of type ``DEFERRED_MESSAGE_CREATE`` upon invocation.
         ephemeral (:obj:`bool`): Whether or not to send responses from the invocation of this command as ephemeral by
             default. If ``True`` then all responses from the command will use the flag :obj:`hikari.MessageFlags.EPHEMERAL`.
-            This will not affect prefix commands as responses from prefix commands **cannot** be ephemeral.
-        hidden (:obj:`bool`): Whether or not to hide the command from the help command. Defaults to ``False``.
         inherit_checks (:obj:`bool`): Whether or not the command should inherit checks from the parent group. Only
             affects subcommands. Defaults to ``False``.
         pass_options (:obj:`bool`): Whether the command will have its options passed as keyword arguments when invoked.
@@ -122,7 +113,6 @@ def option(
     choices: t.Optional[t.Sequence[t.Union[str, int, float, hikari.CommandChoice]]] = None,
     channel_types: t.Optional[t.Sequence[hikari.ChannelType]] = None,
     default: hikari.UndefinedOr[t.Any] = hikari.UNDEFINED,
-    modifier: commands.base.OptionModifier = commands.base.OptionModifier.NONE,
     min_value: t.Optional[t.Union[int, float]] = None,
     max_value: t.Optional[t.Union[int, float]] = None,
     autocomplete: t.Union[bool, AutocompleteCallbackT] = False,
@@ -136,7 +126,7 @@ def option(
     Args:
         name (:obj:`str`): The name of the option.
         description (:obj:`str`): The description of the option.
-        type (Any): The type of the option. This will be used as the converter for prefix commands.
+        type (Any): The type of the option.
 
     Keyword Args:
         required (UndefinedOr[:obj:`bool`]): Whether this option is required. This will be inferred from whether a
@@ -187,7 +177,6 @@ def option(
             choices=choices,
             channel_types=channel_types,
             default=default,
-            modifier=modifier,
             min_value=min_value,
             max_value=max_value,
             autocomplete=autocomplete,
@@ -304,49 +293,6 @@ def add_cooldown(
             raise SyntaxError("'add_cooldown' decorator must be above the 'command' decorator")
 
         c_like.cooldown_manager = cls(getter)
-        return c_like
-
-    return decorate
-
-
-def set_help(
-    text: t.Optional[t.Union[str, t.Callable[[commands.base.Command, context.base.Context], str]]] = None,
-    *,
-    docstring: bool = False,
-) -> t.Callable[[commands.base.CommandLike], commands.base.CommandLike]:
-    """
-    Second order decorator that defines the long help text for a command, or how the long help
-    text should be retrieved. If ``text`` is provided then it will override the value for ``docstring``.
-
-    Args:
-        text (Union[Callable[[:obj:`~.commands.base.Command`, :obj:`~.context.base.Context`], :obj:`str`], :obj:`str`]): The
-            long help text for the command, or a **synchronous** function called with the :obj:`~.commands.base.Command`
-            object to get help text for and the :obj:`~.context.base.Context` that the help text should be
-            retrieved for. If this is not provided, then you **must** pass the kwarg ``docstring=True``.
-
-    Keyword Args:
-        docstring (:obj:`bool`): Whether the command help text should be extracted from the command's docstring.
-            If this is ``False`` (default) then a value **must** be provided for the ``text`` arg.
-    """
-    if text is None and docstring is False:
-        raise ValueError("Either help text/callable or docstring=True must be provided")
-
-    def decorate(c_like: commands.base.CommandLike) -> commands.base.CommandLike:
-        if not isinstance(c_like, commands.base.CommandLike):
-            raise SyntaxError("'set_help' decorator must be above the 'command' decorator")
-
-        if isinstance(text, str):
-            getter = lambda _, __: text
-        elif docstring:
-            cmd_doc = inspect.getdoc(c_like.callback)
-            if cmd_doc is None:
-                raise ValueError("docstring=True was provided but the command does not have a docstring")
-            getter = lambda _, __: cmd_doc  # type: ignore
-        else:
-            assert text is not None
-            getter = text
-
-        c_like.help_getter = getter
         return c_like
 
     return decorate

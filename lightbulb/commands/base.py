@@ -17,14 +17,13 @@
 # along with Lightbulb. If not, see <https://www.gnu.org/licenses/>.
 from __future__ import annotations
 
-__all__ = ["OptionModifier", "OptionLike", "CommandLike", "Command", "ApplicationCommand", "SubCommandTrait"]
+__all__ = ["OptionLike", "CommandLike", "Command", "SubCommandTrait"]
 
 import abc
 import asyncio
 import collections
 import dataclasses
 import datetime
-import enum
 import inspect
 import re
 import typing as t
@@ -41,7 +40,6 @@ if t.TYPE_CHECKING:
     from lightbulb import cooldowns
     from lightbulb import events
     from lightbulb import plugins
-    from lightbulb.utils import parser as parser_
 
 _AutocompleteableOptionT = t.Union[str, int, float]
 AutocompleteCallbackT = t.TypeVar(
@@ -125,21 +123,10 @@ def _get_choice_objects_from_choices(
     return [c if isinstance(c, hikari.CommandChoice) else hikari.CommandChoice(name=str(c), value=c) for c in choices]
 
 
-class OptionModifier(enum.Enum):
-    """Enum representing option modifiers that affect parsing for prefix commands."""
-
-    NONE = enum.auto()
-    """No modifier. This will be parsed as a normal argument."""
-    GREEDY = enum.auto()
-    """Greedy option. This will consume arguments until the string is exhausted or conversion fails."""
-    CONSUME_REST = enum.auto()
-    """Consume rest option. This will consume the entire remainder of the string."""
-
-
 @dataclasses.dataclass
 class OptionLike:
     """
-    Generic dataclass representing a command option. Compatible with both prefix and application commands.
+    Generic dataclass representing a command option.
     """
 
     name: str
@@ -156,8 +143,6 @@ class OptionLike:
     """The channel types for this option. This only affects slash commands."""
     default: hikari.UndefinedOr[t.Any] = hikari.UNDEFINED
     """The default value for this option."""
-    modifier: OptionModifier = OptionModifier.NONE
-    """Additional modifier controlling how the option should be parsed. This only affects prefix commands."""
     min_value: t.Optional[t.Union[float, int]] = None
     """
     The minimum value permitted for this option (inclusive). The option must be ``INTEGER`` or ``FLOAT`` to use this.
@@ -256,26 +241,18 @@ class CommandLike:
         t.Callable[[events.CommandErrorEvent], t.Coroutine[t.Any, t.Any, t.Optional[bool]]]
     ] = None
     """The error handler for the command."""
-    aliases: t.Sequence[str] = dataclasses.field(default_factory=list)
-    """The aliases for the command. This only affects prefix commands."""
     guilds: hikari.UndefinedOr[t.Sequence[int]] = hikari.UNDEFINED
     """The guilds for the command. This only affects application commands."""
     subcommands: t.List[CommandLike] = dataclasses.field(default_factory=list)
     """Subcommands for the command."""
-    parser: t.Optional[t.Type[parser_.BaseParser]] = None
-    """The argument parser to use for prefix commands."""
     cooldown_manager: t.Optional[cooldowns.CooldownManager] = None
     """The cooldown manager for the command."""
-    help_getter: t.Optional[t.Callable[[Command, context_.base.Context], str]] = None
-    """The function to call to get the command's long help text."""
     auto_defer: bool = False
     """Whether or not to automatically defer the response when the command is invoked."""
     ephemeral: bool = False
     """Whether or not to send responses from this command as ephemeral messages by default."""
     check_exempt: t.Optional[t.Callable[[context_.base.Context], t.Union[bool, t.Coroutine[t.Any, t.Any, bool]]]] = None
     """Check exempt predicate to use for the command."""
-    hidden: bool = False
-    """Whether or not the command should be hidden from the help command."""
     inherit_checks: bool = False
     """Whether or not the command should inherit checks from the parent group."""
     pass_options: bool = False
@@ -493,10 +470,9 @@ class Command(abc.ABC):
         self.parent: t.Optional[Command] = None
         """The parent for the command."""
         self._max_concurrency_semaphores: t.Dict[t.Hashable, asyncio.Semaphore] = {}
-
-    @property
-    def _help_getter(self) -> t.Optional[t.Callable[[Command, context_.base.Context], str]]:
-        return self._initialiser.help_getter
+        self._guilds = initialiser.guilds
+        self.instances: t.Dict[t.Union[int, None], hikari.PartialCommand] = {}
+        """Mapping of guild ID to created hikari ``PartialCommand`` objects for this command."""
 
     @property
     def callback(self) -> CommandCallbackT:
@@ -524,21 +500,11 @@ class Command(abc.ABC):
         return self._initialiser.checks
 
     @property
-    def aliases(self) -> t.Sequence[str]:
-        """The aliases for the command. This value means nothing for application commands."""
-        return self._initialiser.aliases
-
-    @property
     def error_handler(
         self,
     ) -> t.Optional[t.Callable[[events.CommandErrorEvent], t.Coroutine[t.Any, t.Any, t.Optional[bool]]]]:
         """The error handler function for the command."""
         return self._initialiser.error_handler
-
-    @property
-    def parser(self) -> t.Optional[t.Type[parser_.BaseParser]]:
-        """The argument parser to use for prefix commands."""
-        return self._initialiser.parser
 
     @property
     def cooldown_manager(self) -> t.Optional[cooldowns.CooldownManager]:
@@ -559,11 +525,6 @@ class Command(abc.ABC):
     def check_exempt(self) -> t.Callable[[context_.base.Context], t.Union[bool, t.Coroutine[t.Any, t.Any, bool]]]:
         """Check exempt predicate to use for the command."""
         return self._initialiser.check_exempt or (lambda _: False)
-
-    @property
-    def hidden(self) -> bool:
-        """Whether the command should be hidden from the help command."""
-        return self._initialiser.hidden
 
     @property
     def inherit_checks(self) -> bool:
@@ -595,6 +556,11 @@ class Command(abc.ABC):
         """Whether invocations of this command as an application command will bypass author permission checks."""
         return self._initialiser.app_command_bypass_author_permission_checks
 
+    @property
+    def guilds(self) -> t.Sequence[int]:
+        """The guilds that this command is available in."""
+        return self.app.default_enabled_guilds if self._guilds is hikari.UNDEFINED else self._guilds
+
     def __hash__(self) -> int:
         return hash(self.name)
 
@@ -607,6 +573,7 @@ class Command(abc.ABC):
     def _validate_attributes(self) -> None:
         pass
 
+    # This is called seperately by groups to recursively set plugin
     def _set_plugin(self, pl: plugins.Plugin) -> None:
         self._plugin = pl
 
@@ -624,22 +591,6 @@ class Command(abc.ABC):
         """Alias for :obj:`~Context.app`"""
         return self.app
 
-    def get_help(self, context: context_.base.Context) -> str:
-        """
-        Get the help text for the command under the given context. This method calls the help getter
-        provided by the :obj:`~.decorators.set_help` decorator. An empty string will be returned
-        if no help getter function was set.
-
-        Args:
-            context (:obj:`~.context.base.Context`): Context to get the help text under.
-
-        Returns:
-            :obj:`str`: Command's help text.
-        """
-        if self._help_getter is None:
-            return ""
-        return self._help_getter(self, context)
-
     @property
     def is_subcommand(self) -> bool:
         """Boolean representing whether or not this object is a subcommand."""
@@ -651,10 +602,11 @@ class Command(abc.ABC):
         return self.name
 
     @property
-    @abc.abstractmethod
     def signature(self) -> str:
-        """The command's text signature."""
-        ...
+        sig = self.qualname
+        if self.options:
+            sig += f" {' '.join(f'<{o.name}>' if o.required else f'[{o.name}={o.default}]' for o in self.options.values())}"
+        return sig
 
     async def _evaluate_max_concurrency(self, context: context_.base.Context) -> None:
         if self.max_concurrency is None:
@@ -739,30 +691,6 @@ class Command(abc.ABC):
         """
         if self.cooldown_manager is not None:
             await self.cooldown_manager.add_cooldown(context)
-
-
-class ApplicationCommand(Command, abc.ABC):
-    """Abstract base class for all application command types."""
-
-    __slots__ = ("_guilds", "instances")
-
-    def __init__(self, app: app_.BotApp, initialiser: CommandLike) -> None:
-        super().__init__(app, initialiser)
-        self._guilds = initialiser.guilds
-        self.instances: t.Dict[t.Union[int, None], hikari.PartialCommand] = {}
-        """Mapping of guild ID to created hikari ``PartialCommand`` objects for this command."""
-
-    @property
-    def guilds(self) -> t.Sequence[int]:
-        """The guilds that this command is available in."""
-        return self.app.default_enabled_guilds if self._guilds is hikari.UNDEFINED else self._guilds
-
-    @property
-    def signature(self) -> str:
-        sig = self.qualname
-        if self.options:
-            sig += f" {' '.join(f'<{o.name}>' if o.required else f'[{o.name}={o.default}]' for o in self.options.values())}"
-        return sig
 
     async def create(self, guild: t.Optional[int] = None) -> hikari.PartialCommand:
         """

@@ -17,11 +17,9 @@
 # along with Lightbulb. If not, see <https://www.gnu.org/licenses/>.
 
 __all__ = [
-    "ApplicationContext",
     "Context",
     "MessageContext",
     "OptionsProxy",
-    "PrefixContext",
     "ResponseProxy",
     "SlashContext",
     "UserContext",
@@ -29,11 +27,9 @@ __all__ = [
 
 from lightbulb.context import base
 from lightbulb.context import message
-from lightbulb.context import prefix
 from lightbulb.context import slash
 from lightbulb.context import user
 from lightbulb.context.base import *
 from lightbulb.context.message import *
-from lightbulb.context.prefix import *
 from lightbulb.context.slash import *
 from lightbulb.context.user import *

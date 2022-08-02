@@ -84,7 +84,7 @@ def _serialise_hikari_command(command: hikari.PartialCommand) -> t.Dict[str, t.A
     }
 
 
-def _serialise_lightbulb_command(command: base.ApplicationCommand) -> t.Dict[str, t.Any]:
+def _serialise_lightbulb_command(command: base.Command) -> t.Dict[str, t.Any]:
     create_kwargs = command.as_create_kwargs()
     return {
         "type": create_kwargs["type"],
@@ -97,18 +97,18 @@ def _serialise_lightbulb_command(command: base.ApplicationCommand) -> t.Dict[str
     }
 
 
-def serialise_command(command: t.Union[hikari.PartialCommand, base.ApplicationCommand]) -> t.Dict[str, t.Any]:
+def serialise_command(command: t.Union[hikari.PartialCommand, base.Command]) -> t.Dict[str, t.Any]:
     if isinstance(command, hikari.PartialCommand):
         return _serialise_hikari_command(command)
     return _serialise_lightbulb_command(command)
 
 
-def _compare_commands(cmd1: base.ApplicationCommand, cmd2: hikari.PartialCommand) -> bool:
+def _compare_commands(cmd1: base.Command, cmd2: hikari.PartialCommand) -> bool:
     return serialise_command(cmd1) == serialise_command(cmd2)
 
 
 def _create_builder_from_command(
-    app: app_.BotApp, cmd: t.Union[hikari.PartialCommand, base.ApplicationCommand]
+    app: app_.BotApp, cmd: t.Union[hikari.PartialCommand, base.Command]
 ) -> t.Union[hikari.api.SlashCommandBuilder, hikari.api.ContextMenuCommandBuilder]:
     bld: t.Union[hikari.api.SlashCommandBuilder, hikari.api.ContextMenuCommandBuilder]
     if isinstance(cmd, hikari.PartialCommand):
@@ -139,9 +139,7 @@ def _create_builder_from_command(
     return bld
 
 
-def _get_lightbulb_command_equivalent(
-    app: app_.BotApp, cmd: hikari.PartialCommand
-) -> t.Optional[base.ApplicationCommand]:
+def _get_lightbulb_command_equivalent(app: app_.BotApp, cmd: hikari.PartialCommand) -> t.Optional[base.Command]:
     if cmd.type is hikari.CommandType.SLASH:
         return app.get_slash_command(cmd.name)
     elif cmd.type is hikari.CommandType.USER:
@@ -159,7 +157,7 @@ async def _get_guild_commands_to_set(app: app_.BotApp, guild_id: int) -> t.Seque
     existing_commands = await app.rest.fetch_application_commands(app.application, guild_id)
 
     # Create a mapping containing all the commands that should be created for this guild
-    app_commands: t.Dict[hikari.CommandType, t.Dict[str, base.ApplicationCommand]] = {
+    app_commands: t.Dict[hikari.CommandType, t.Dict[str, base.Command]] = {
         hikari.CommandType.SLASH: {c.name: c for c in app._slash_commands.values() if guild_id in c.guilds},
         hikari.CommandType.USER: {c.name: c for c in app._user_commands.values() if guild_id in c.guilds},
         hikari.CommandType.MESSAGE: {c.name: c for c in app._message_commands.values() if guild_id in c.guilds},
@@ -215,7 +213,7 @@ async def _process_global_commands(app: app_.BotApp) -> None:
     # Get the commands that already exist globally
     existing_global_commands = await app.rest.fetch_application_commands(app.application)
     # Create a mapping containing all the commands that should be created globally
-    registered_global_commands: t.Dict[hikari.CommandType, t.Dict[str, base.ApplicationCommand]] = {
+    registered_global_commands: t.Dict[hikari.CommandType, t.Dict[str, base.Command]] = {
         hikari.CommandType.SLASH: {c.name: c for c in app._slash_commands.values() if not c.guilds},
         hikari.CommandType.USER: {c.name: c for c in app._user_commands.values() if not c.guilds},
         hikari.CommandType.MESSAGE: {c.name: c for c in app._message_commands.values() if not c.guilds},
@@ -269,7 +267,7 @@ async def manage_application_commands(app: app_.BotApp) -> None:
     for app_cmd in [*app._message_commands.values(), *app._user_commands.values(), *app._slash_commands.values()]:
         all_guilds.update(app_cmd.guilds or [])
 
-    cmd_mapping: t.Dict[hikari.CommandType, t.Dict[str, base.ApplicationCommand]] = {
+    cmd_mapping: t.Dict[hikari.CommandType, t.Dict[str, base.Command]] = {
         hikari.CommandType.SLASH: app._slash_commands,  # type: ignore[dict-item]
         hikari.CommandType.USER: app._user_commands,  # type: ignore[dict-item]
         hikari.CommandType.MESSAGE: app._message_commands,  # type: ignore[dict-item]

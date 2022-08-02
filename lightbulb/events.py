@@ -21,9 +21,6 @@ __all__ = [
     "LightbulbEvent",
     "LightbulbStartedEvent",
     "CommandErrorEvent",
-    "PrefixCommandErrorEvent",
-    "PrefixCommandInvocationEvent",
-    "PrefixCommandCompletionEvent",
     "SlashCommandErrorEvent",
     "CommandInvocationEvent",
     "SlashCommandInvocationEvent",
@@ -124,11 +121,6 @@ class CommandCompletionEvent(LightbulbEvent, abc.ABC):
 
 
 @attr.s(slots=True, weakref_slot=False)
-class PrefixCommandErrorEvent(CommandErrorEvent):
-    """Event dispatched when an error is encountered before or during the invocation of a prefix command."""
-
-
-@attr.s(slots=True, weakref_slot=False)
 class SlashCommandErrorEvent(CommandErrorEvent):
     """Event dispatched when an error is encountered before or during the invocation of a slash command."""
 
@@ -144,11 +136,6 @@ class UserCommandErrorEvent(CommandErrorEvent):
 
 
 @attr.s(slots=True, weakref_slot=False)
-class PrefixCommandInvocationEvent(CommandInvocationEvent):
-    """Event dispatched before the invocation of a prefix command."""
-
-
-@attr.s(slots=True, weakref_slot=False)
 class SlashCommandInvocationEvent(CommandInvocationEvent):
     """Event dispatched before the invocation of a slash command."""
 
@@ -161,11 +148,6 @@ class MessageCommandInvocationEvent(CommandInvocationEvent):
 @attr.s(slots=True, weakref_slot=False)
 class UserCommandInvocationEvent(CommandInvocationEvent):
     """Event dispatched before the invocation of a user command."""
-
-
-@attr.s(slots=True, weakref_slot=False)
-class PrefixCommandCompletionEvent(CommandCompletionEvent):
-    """Event dispatched after the invocation of a prefix command is completed."""
 
 
 @attr.s(slots=True, weakref_slot=False)

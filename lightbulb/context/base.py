@@ -17,16 +17,14 @@
 # along with Lightbulb. If not, see <https://www.gnu.org/licenses/>.
 from __future__ import annotations
 
-__all__ = ["Context", "ApplicationContext", "OptionsProxy", "ResponseProxy"]
+__all__ = ["Context", "OptionsProxy", "ResponseProxy"]
 
 import abc
 import asyncio
-import functools
+import datetime
 import typing as t
 
 import hikari
-
-from lightbulb import errors
 
 if t.TYPE_CHECKING:
     from lightbulb import app as app_
@@ -58,34 +56,45 @@ class ResponseProxy:
     lazily instead of a follow-up request being made immediately.
     """
 
-    __slots__ = ("_message", "_fetcher", "_editor", "_editable", "_deleteable")
+    __slots__ = ("_message", "_context", "_delete_after_task")
 
     def __init__(
         self,
+        context: Context,
         message: t.Optional[hikari.Message] = None,
-        fetcher: t.Optional[t.Callable[[], t.Coroutine[t.Any, t.Any, hikari.Message]]] = None,
-        editor: t.Optional[t.Callable[[ResponseProxy], t.Coroutine[t.Any, t.Any, hikari.Message]]] = None,
-        deleteable: bool = True,
     ) -> None:
-        if message is None and fetcher is None:
-            raise ValueError("One of message or fetcher arguments cannot be None")
 
-        self._message = message
-        self._fetcher = fetcher
-        self._editor = editor
-        self._deleteable = deleteable
-
-        if editor is None:
-
-            async def _default_editor(rp: ResponseProxy, *args: t.Any, **kwargs: t.Any) -> hikari.Message:
-                return await (await rp.message()).edit(*args, **kwargs)
-
-            self._editor = _default_editor
+        # If the proxy has a message, it's a followup, otherwise initial response
+        self._message: t.Optional[hikari.Message] = message
+        self._context: Context = context
+        self._delete_after_task: t.Optional[asyncio.Task[None]] = None
 
     def __await__(self) -> t.Generator[t.Any, None, hikari.Message]:
-        return self.message().__await__()
+        return self.retrieve_message().__await__()
 
-    async def message(self) -> hikari.Message:
+    async def _do_delete_after(self, delay: float) -> None:
+        """Delete the response after the specified delay.
+
+        This should not be called manually,
+        and instead should be triggered by the ``delete_after`` method of this class.
+        """
+        await asyncio.sleep(delay)
+        await self.delete()
+
+    def delete_after(self, delay: t.Union[int, float, datetime.timedelta]) -> None:
+        """Delete the response after the specified delay.
+
+        Returns:
+            ``None``
+        """
+        if self._delete_after_task is not None:
+            raise RuntimeError("A delete_after task is already running.")
+
+        if isinstance(delay, datetime.timedelta):
+            delay = delay.total_seconds()
+        self._delete_after_task = asyncio.create_task(self._do_delete_after(delay))
+
+    async def retrieve_message(self) -> hikari.Message:
         """
         Fetches and/or returns the created message from the context response.
 
@@ -97,20 +106,37 @@ class ResponseProxy:
 
             .. code-block:: python
 
-                # Where 'resp' is an instance of ResponseProxy
+                # Where 'response' is an instance of ResponseProxy
 
                 # Calling this method
-                message = await resp.message()
+                message = await response.retrieve_message()
                 # Awaiting the object itself
-                message = await resp
+                message = await response
         """
         if self._message is not None:
             return self._message
-        assert self._fetcher is not None
-        msg = await self._fetcher()
-        return msg
+        message = await self._context.interaction.fetch_initial_response()
+        return message
 
-    async def edit(self, *args: t.Any, **kwargs: t.Any) -> hikari.Message:
+    async def edit(
+        self,
+        content: hikari.UndefinedOr[t.Any] = hikari.UNDEFINED,
+        *,
+        component: hikari.UndefinedOr[hikari.api.ComponentBuilder] = hikari.UNDEFINED,
+        components: hikari.UndefinedOr[t.Sequence[hikari.api.ComponentBuilder]] = hikari.UNDEFINED,
+        attachment: hikari.UndefinedOr[hikari.Resourceish] = hikari.UNDEFINED,
+        attachments: hikari.UndefinedOr[t.Sequence[hikari.Resourceish]] = hikari.UNDEFINED,
+        embed: hikari.UndefinedOr[hikari.Embed] = hikari.UNDEFINED,
+        embeds: hikari.UndefinedOr[t.Sequence[hikari.Embed]] = hikari.UNDEFINED,
+        replace_attachments: bool = False,
+        mentions_everyone: hikari.UndefinedOr[bool] = hikari.UNDEFINED,
+        user_mentions: hikari.UndefinedOr[
+            t.Union[hikari.SnowflakeishSequence[hikari.PartialUser], bool]
+        ] = hikari.UNDEFINED,
+        role_mentions: hikari.UndefinedOr[
+            t.Union[hikari.SnowflakeishSequence[hikari.PartialRole], bool]
+        ] = hikari.UNDEFINED,
+    ) -> ResponseProxy:
         """
         Edits the message that this object is proxying. Shortcut for :obj:`hikari.messages.Message.edit`.
 
@@ -120,15 +146,38 @@ class ResponseProxy:
 
         Returns:
             :obj:`~hikari.messages.Message`: New message after edit.
-
-        Raises:
-            :obj:`~.errors.UnsupportedResponseOperation`: This response cannot be edited (for ephemeral
-                interaction followup responses).
         """
-        assert self._editor is not None
-        out = await self._editor(self, *args, **kwargs)
-        assert isinstance(out, hikari.Message)
-        return out
+        if self._message:
+            message = await self._context.interaction.edit_message(
+                self._message,
+                content,
+                component=component,
+                components=components,
+                attachment=attachment,
+                attachments=attachments,
+                embed=embed,
+                embeds=embeds,
+                replace_attachments=replace_attachments,
+                mentions_everyone=mentions_everyone,
+                user_mentions=user_mentions,
+                role_mentions=role_mentions,
+            )
+            return self._context._create_response(self._message)
+
+        message = await self._context.interaction.edit_initial_response(
+            content,
+            component=component,
+            components=components,
+            attachment=attachment,
+            attachments=attachments,
+            embed=embed,
+            embeds=embeds,
+            replace_attachments=replace_attachments,
+            mentions_everyone=mentions_everyone,
+            user_mentions=user_mentions,
+            role_mentions=role_mentions,
+        )
+        return self._context._create_response(message)
 
     async def delete(self) -> None:
         """
@@ -141,11 +190,10 @@ class ResponseProxy:
             :obj:`~.errors.UnsupportedResponseOperation`: This response cannot be deleted (for some ephemeral
                 interaction responses).
         """
-        if not self._deleteable:
-            raise errors.UnsupportedResponseOperation("This response does not support deleting.")
+        if self._message:
+            await self._context.interaction.delete_message(self._message)
 
-        msg = await self.message()
-        await msg.delete()
+        await self._context.interaction.delete_initial_response()
 
 
 class Context(abc.ABC):
@@ -158,16 +206,20 @@ class Context(abc.ABC):
 
     __slots__ = ("_app", "_responses", "_responded", "_deferred", "_invoked")
 
-    def __init__(self, app: app_.BotApp):
+    def __init__(self, app: app_.BotApp, event: hikari.InteractionCreateEvent, command: commands.base.Command):
         self._app = app
         self._responses: t.List[ResponseProxy] = []
         self._responded: bool = False
         self._deferred: bool = False
         self._invoked: t.Optional[commands.base.Command] = None
+        self._event = event
+        assert isinstance(event.interaction, hikari.CommandInteraction)
+        self._interaction: hikari.CommandInteraction = event.interaction
+        self._command = command
 
-    @abc.abstractmethod
     async def _maybe_defer(self) -> None:
-        ...
+        if (self._invoked or self._command).auto_defer:
+            await self.respond(hikari.ResponseType.DEFERRED_MESSAGE_CREATE)
 
     @property
     def deferred(self) -> bool:
@@ -185,16 +237,14 @@ class Context(abc.ABC):
         return self._responses[-1] if self._responses else None
 
     @property
-    def interaction(self) -> t.Optional[hikari.CommandInteraction]:
-        """The interaction that triggered this context. Will be ``None`` for prefix commands."""
-        # Just to keep the interfaces the same for prefix commands and application commands
-        return None
+    def interaction(self) -> hikari.CommandInteraction:
+        """The interaction that triggered this context."""
+        return self._interaction
 
     @property
     def resolved(self) -> t.Optional[hikari.ResolvedOptionData]:
-        """The resolved option data for this context. Will be ``None`` for prefix commands"""
-        # Just to keep the interfaces the same for prefix commands and application commands
-        return None
+        """The resolved option data for this context."""
+        return self._interaction.resolved
 
     @property
     def app(self) -> app_.BotApp:
@@ -207,10 +257,9 @@ class Context(abc.ABC):
         return self.app
 
     @property
-    @abc.abstractmethod
-    def event(self) -> t.Union[hikari.MessageCreateEvent, hikari.InteractionCreateEvent]:
+    def event(self) -> hikari.InteractionCreateEvent:
         """The event for the context."""
-        ...
+        return self._event
 
     @property
     def raw_options(self) -> t.Dict[str, t.Any]:
@@ -223,33 +272,24 @@ class Context(abc.ABC):
         return OptionsProxy(self.raw_options)
 
     @property
-    @abc.abstractmethod
     def channel_id(self) -> hikari.Snowflakeish:
         """The channel ID for the context."""
-        ...
+        return self._interaction.channel_id
 
     @property
-    @abc.abstractmethod
     def guild_id(self) -> t.Optional[hikari.Snowflakeish]:
         """The guild ID for the context."""
-        ...
+        return self._interaction.guild_id
 
     @property
-    @abc.abstractmethod
-    def attachments(self) -> t.Sequence[hikari.Attachment]:
-        ...
-
-    @property
-    @abc.abstractmethod
     def member(self) -> t.Optional[hikari.Member]:
         """The member for the context."""
-        ...
+        return self._interaction.member
 
     @property
-    @abc.abstractmethod
     def author(self) -> hikari.User:
         """The author for the context."""
-        ...
+        return self._interaction.user
 
     @property
     def user(self) -> hikari.User:
@@ -257,19 +297,16 @@ class Context(abc.ABC):
         return self.author
 
     @property
-    @abc.abstractmethod
     def invoked_with(self) -> str:
-        """The command name or alias was used in the context."""
-        ...
+        return self._command.name
+
+    @property
+    def command_id(self) -> hikari.Snowflake:
+        return self._interaction.command_id
 
     @property
     @abc.abstractmethod
-    def prefix(self) -> str:
-        """The prefix that was used in the context."""
-
-    @property
-    @abc.abstractmethod
-    def command(self) -> t.Optional[commands.base.Command]:
+    def command(self) -> commands.base.Command:
         """
         The root command object that the context is for.
 
@@ -287,10 +324,15 @@ class Context(abc.ABC):
         """
         return self._invoked
 
-    @abc.abstractmethod
+    def _create_response(self, message: t.Optional[hikari.Message] = None) -> ResponseProxy:
+        """Create a new response and add it to the list of tracked responses."""
+        response = ResponseProxy(self, message)
+        self._responses.append(response)
+        return response
+
     def get_channel(self) -> t.Optional[t.Union[hikari.GuildChannel, hikari.Snowflake]]:
         """The channel object for the context's channel ID."""
-        ...
+        return self._app.cache.get_guild_channel(self.channel_id)
 
     def get_guild(self) -> t.Optional[hikari.Guild]:
         """The guild object for the context's guild ID."""
@@ -315,7 +357,7 @@ class Context(abc.ABC):
         self,
         response_type: hikari.ResponseType,
         content: hikari.UndefinedOr[t.Any] = hikari.UNDEFINED,
-        delete_after: t.Union[int, float, None] = None,
+        delete_after: t.Union[int, float, datetime.timedelta, None] = None,
         *,
         attachment: hikari.UndefinedOr[hikari.Resourceish] = hikari.UNDEFINED,
         attachments: hikari.UndefinedOr[t.Sequence[hikari.Resourceish]] = hikari.UNDEFINED,
@@ -342,7 +384,7 @@ class Context(abc.ABC):
     async def respond(
         self,
         content: hikari.UndefinedOr[t.Any] = hikari.UNDEFINED,
-        delete_after: t.Union[int, float, None] = None,
+        delete_after: t.Union[int, float, datetime.timedelta, None] = None,
         *,
         attachment: hikari.UndefinedOr[hikari.Resourceish] = hikari.UNDEFINED,
         attachments: hikari.UndefinedOr[t.Sequence[hikari.Resourceish]] = hikari.UNDEFINED,
@@ -365,16 +407,46 @@ class Context(abc.ABC):
     ) -> ResponseProxy:
         ...
 
-    @abc.abstractmethod
     async def respond(
-        self, *args: t.Any, delete_after: t.Union[int, float, None] = None, **kwargs: t.Any
+        self, *args: t.Any, delete_after: t.Union[int, float, datetime.timedelta, None] = None, **kwargs: t.Any
     ) -> ResponseProxy:
         """
         Create a response to this context.
         """
-        ...
+        if args and isinstance(args[0], hikari.ResponseType):
+            response_type = args[0]
+            args = args[1:]
+        else:
+            response_type = hikari.ResponseType.MESSAGE_CREATE
 
-    async def edit_last_response(self, *args: t.Any, **kwargs: t.Any) -> t.Optional[hikari.Message]:
+        if self._responded:
+            message = await self.interaction.execute(response_type, *args, **kwargs)
+            response = self._create_response(message)
+        else:
+            await self.interaction.create_initial_response(response_type, *args, **kwargs)  # type: ignore [arg-type]
+            response = self._create_response()
+
+        if delete_after:
+            response.delete_after(delete_after)
+        return response
+
+    async def edit_last_response(
+        self,
+        content: hikari.UndefinedOr[t.Any] = hikari.UNDEFINED,
+        *,
+        component: hikari.UndefinedOr[hikari.api.ComponentBuilder] = hikari.UNDEFINED,
+        components: hikari.UndefinedOr[t.Sequence[hikari.api.ComponentBuilder]] = hikari.UNDEFINED,
+        attachment: hikari.UndefinedOr[hikari.Resourceish] = hikari.UNDEFINED,
+        attachments: hikari.UndefinedOr[t.Sequence[hikari.Resourceish]] = hikari.UNDEFINED,
+        embed: hikari.UndefinedOr[hikari.Embed] = hikari.UNDEFINED,
+        embeds: hikari.UndefinedOr[t.Sequence[hikari.Embed]] = hikari.UNDEFINED,
+        replace_attachments: bool = False,
+        mentions_everyone: hikari.UndefinedOr[bool] = hikari.UNDEFINED,
+        user_mentions: hikari.UndefinedOr[
+            t.Union[hikari.SnowflakeishSequence[hikari.PartialUser], bool]
+        ] = hikari.UNDEFINED,
+        role_mentions: hikari.UndefinedOr[t.Union[hikari.SnowflakeishSequence[hikari.PartialRole], bool]],
+    ) -> t.Optional[ResponseProxy]:
         """
         Edit the most recently sent response. Shortcut for :obj:`hikari.messages.Message.edit`.
 
@@ -387,9 +459,21 @@ class Context(abc.ABC):
                 been sent for the context yet.
         """
         if not self._responses:
-            return None
+            raise RuntimeError("No responses have been sent for this context yet.")
 
-        return await self._responses[-1].edit(*args, **kwargs)
+        return await self._responses[-1].edit(
+            content,
+            component=component,
+            components=components,
+            attachment=attachment,
+            attachments=attachments,
+            embed=embed,
+            embeds=embeds,
+            replace_attachments=replace_attachments,
+            mentions_everyone=mentions_everyone,
+            user_mentions=user_mentions,
+            role_mentions=role_mentions,
+        )
 
     async def delete_last_response(self) -> None:
         """
@@ -402,191 +486,3 @@ class Context(abc.ABC):
             return
 
         await self._responses.pop().delete()
-
-
-class ApplicationContext(Context, abc.ABC):
-    __slots__ = ("_event", "_interaction", "_command")
-
-    def __init__(
-        self, app: app_.BotApp, event: hikari.InteractionCreateEvent, command: commands.base.ApplicationCommand
-    ) -> None:
-        super().__init__(app)
-        self._event = event
-        assert isinstance(event.interaction, hikari.CommandInteraction)
-        self._interaction: hikari.CommandInteraction = event.interaction
-        self._command = command
-
-    async def _maybe_defer(self) -> None:
-        if (self._invoked or self._command).auto_defer:
-            await self.respond(hikari.ResponseType.DEFERRED_MESSAGE_CREATE)
-
-    @property
-    @abc.abstractmethod
-    def command(self) -> commands.base.ApplicationCommand:
-        ...
-
-    @property
-    def event(self) -> hikari.InteractionCreateEvent:
-        return self._event
-
-    @property
-    def interaction(self) -> hikari.CommandInteraction:
-        return self._interaction
-
-    @property
-    def channel_id(self) -> hikari.Snowflakeish:
-        return self._interaction.channel_id
-
-    @property
-    def guild_id(self) -> t.Optional[hikari.Snowflakeish]:
-        return self._interaction.guild_id
-
-    @property
-    def attachments(self) -> t.Sequence[hikari.Attachment]:
-        return []
-
-    @property
-    def member(self) -> t.Optional[hikari.Member]:
-        return self._interaction.member
-
-    @property
-    def author(self) -> hikari.User:
-        return self._interaction.user
-
-    @property
-    def invoked_with(self) -> str:
-        return self._command.name
-
-    @property
-    def command_id(self) -> hikari.Snowflake:
-        return self._interaction.command_id
-
-    @property
-    def resolved(self) -> t.Optional[hikari.ResolvedOptionData]:
-        return self._interaction.resolved
-
-    def get_channel(self) -> t.Optional[t.Union[hikari.GuildChannel, hikari.Snowflake]]:
-        if self.guild_id is not None:
-            return self.app.cache.get_guild_channel(self.channel_id)
-        return self.app.cache.get_dm_channel_id(self.user)
-
-    async def respond(
-        self, *args: t.Any, delete_after: t.Union[int, float, None] = None, **kwargs: t.Any
-    ) -> ResponseProxy:
-        """
-        Create a response for this context. The first time this method is called, the initial
-        interaction response will be created by calling
-        :obj:`~hikari.interactions.command_interactions.CommandInteraction.create_initial_response` with the response
-        type set to :obj:`~hikari.interactions.base_interactions.ResponseType.MESSAGE_CREATE` if not otherwise
-        specified.
-
-        Subsequent calls will instead create followup responses to the interaction by calling
-        :obj:`~hikari.interactions.command_interactions.CommandInteraction.execute`.
-
-        Args:
-            *args (Any): Positional arguments passed to ``CommandInteraction.create_initial_response`` or
-                ``CommandInteraction.execute``.
-            delete_after (Union[:obj:`int`, :obj:`float`, ``None``]): The number of seconds to wait before deleting this response.
-            **kwargs: Keyword arguments passed to ``CommandInteraction.create_initial_response`` or
-                ``CommandInteraction.execute``.
-
-        Returns:
-            :obj:`~ResponseProxy`: Proxy wrapping the response of the ``respond`` call.
-
-        .. versionadded:: 2.2.0
-            ``delete_after`` kwarg.
-        """
-
-        async def _cleanup(timeout: t.Union[int, float], proxy_: ResponseProxy) -> None:
-            await asyncio.sleep(timeout)
-
-            try:
-                await proxy_.delete()
-            except hikari.NotFoundError:
-                pass
-
-        includes_ephemeral: t.Callable[[t.Union[hikari.MessageFlag, int],], bool] = (
-            lambda flags: (hikari.MessageFlag.EPHEMERAL & flags) == hikari.MessageFlag.EPHEMERAL
-        )
-
-        kwargs.pop("reply", None)
-        kwargs.pop("mentions_reply", None)
-        kwargs.pop("nonce", None)
-
-        if (self._invoked or self._command).default_ephemeral:
-            kwargs.setdefault("flags", hikari.MessageFlag.EPHEMERAL)
-
-        if self._responded:
-            kwargs.pop("response_type", None)
-            if args and isinstance(args[0], hikari.ResponseType):
-                args = args[1:]
-
-            async def _ephemeral_followup_editor(
-                _: ResponseProxy,
-                *args_: t.Any,
-                _wh_id: hikari.Snowflake,
-                _tkn: str,
-                _m_id: hikari.Snowflake,
-                **kwargs_: t.Any,
-            ) -> hikari.Message:
-                return await self.app.rest.edit_webhook_message(_wh_id, _tkn, _m_id, *args_, **kwargs_)
-
-            message = await self._interaction.execute(*args, **kwargs)
-            proxy = ResponseProxy(
-                message,
-                editor=functools.partial(
-                    _ephemeral_followup_editor,
-                    _wh_id=self._interaction.webhook_id,
-                    _tkn=self._interaction.token,
-                    _m_id=message.id,
-                ),
-                deleteable=not includes_ephemeral(kwargs.get("flags", hikari.MessageFlag.NONE)),
-            )
-            self._responses.append(proxy)
-            self._deferred = False
-
-            if delete_after is not None:
-                self.app.create_task(_cleanup(delete_after, proxy))
-
-            return self._responses[-1]
-
-        if args:
-            if not isinstance(args[0], hikari.ResponseType):
-                kwargs["content"] = args[0]
-                kwargs.setdefault("response_type", hikari.ResponseType.MESSAGE_CREATE)
-            else:
-                kwargs["response_type"] = args[0]
-                if len(args) > 1:
-                    kwargs.setdefault("content", args[1])
-        else:
-            kwargs.setdefault("response_type", hikari.ResponseType.MESSAGE_CREATE)
-
-        await self._interaction.create_initial_response(**kwargs)
-
-        # Initial responses are special and need their own edit method defined
-        # so that they work as expected for when the responses are ephemeral
-        async def _editor(
-            rp: ResponseProxy, *args_: t.Any, inter: hikari.CommandInteraction, **kwargs_: t.Any
-        ) -> hikari.Message:
-            await inter.edit_initial_response(*args_, **kwargs_)
-            return await rp.message()
-
-        proxy = ResponseProxy(
-            fetcher=self._interaction.fetch_initial_response,
-            editor=functools.partial(_editor, inter=self._interaction)
-            if includes_ephemeral(kwargs.get("flags", hikari.MessageFlag.NONE))
-            else None,
-        )
-        self._responses.append(proxy)
-        self._responded = True
-
-        if kwargs["response_type"] in (
-            hikari.ResponseType.DEFERRED_MESSAGE_CREATE,
-            hikari.ResponseType.DEFERRED_MESSAGE_UPDATE,
-        ):
-            self._deferred = True
-
-        if delete_after is not None:
-            self.app.create_task(_cleanup(delete_after, proxy))
-
-        return self._responses[-1]

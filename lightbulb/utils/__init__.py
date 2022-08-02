@@ -18,25 +18,11 @@
 from __future__ import annotations
 
 __all__ = [
-    "BaseParser",
-    "ButtonNavigator",
-    "ComponentButton",
     "DataStore",
-    "EmbedPaginator",
-    "Paginator",
-    "Parser",
-    "ReactionButton",
-    "ReactionNavigator",
-    "StringPaginator",
     "find",
-    "first_page",
     "get",
-    "last_page",
-    "next_page",
     "permissions_for",
     "permissions_in",
-    "prev_page",
-    "stop",
     "build_invite_url",
 ]
 
@@ -46,15 +32,11 @@ from urllib import parse
 import hikari
 
 from lightbulb.utils import data_store
-from lightbulb.utils import nav
 from lightbulb.utils import pag
-from lightbulb.utils import parser
 from lightbulb.utils import permissions
 from lightbulb.utils import search
 from lightbulb.utils.data_store import *
-from lightbulb.utils.nav import *
 from lightbulb.utils.pag import *
-from lightbulb.utils.parser import *
 from lightbulb.utils.permissions import *
 from lightbulb.utils.search import *
 
@@ -65,7 +47,7 @@ if t.TYPE_CHECKING:
 def build_invite_url(
     app: app_.BotApp,
     permissions: hikari.Permissions = hikari.Permissions.NONE,
-    allow_commands: bool = False,
+    allow_commands: bool = True,
 ) -> str:
     """
     Build an invite link for the given :obj:`~.app.BotApp` with the given permissions and scopes. This
@@ -76,7 +58,7 @@ def build_invite_url(
         permissions (:obj:`hikari.Permissions`): Permissions to add to the invite link. Defaults to
             :obj:`hikari.Permissions.NONE`.
         allow_commands (:obj:`bool`): Whether to add the `applications.commands` scope to the invite link. Defaults
-            to ``False``.
+            to ``True``.
 
     Returns:
         :obj:`str`: Created invite link.

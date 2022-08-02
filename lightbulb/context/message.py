@@ -30,7 +30,7 @@ if t.TYPE_CHECKING:
     from lightbulb import app as app_
 
 
-class MessageContext(base.ApplicationContext):
+class MessageContext(base.Context):
     """
     An implementation of :obj:`~.context.base.Context` for message context menu commands.
 
@@ -73,7 +73,3 @@ class MessageContext(base.ApplicationContext):
     def command(self) -> commands.message.MessageCommand:
         assert isinstance(self._command, commands.message.MessageCommand)
         return self._command
-
-    @property
-    def prefix(self) -> str:
-        return "\N{THREE BUTTON MOUSE}\N{VARIATION SELECTOR-16}"

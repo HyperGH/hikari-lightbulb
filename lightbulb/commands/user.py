@@ -26,7 +26,7 @@ import hikari
 from lightbulb.commands import base
 
 
-class UserCommand(base.ApplicationCommand):
+class UserCommand(base.Command):
     """
     An implementation of :obj:`~.commands.base.Command` representing a user context menu command.
 
