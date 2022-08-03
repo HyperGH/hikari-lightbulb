@@ -649,9 +649,9 @@ class Command(abc.ABC):
 
         await self._evaluate_max_concurrency(context)
         try:
+            await self._convert_options(context)
             await self.evaluate_checks(context)
             await self.evaluate_cooldowns(context)
-            await self._convert_options(context)
             await self(context, **kwargs)
         except Exception:
             raise
