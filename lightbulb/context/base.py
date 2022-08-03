@@ -136,19 +136,15 @@ class ResponseProxy:
         role_mentions: hikari.UndefinedOr[
             t.Union[hikari.SnowflakeishSequence[hikari.PartialRole], bool]
         ] = hikari.UNDEFINED,
-    ) -> ResponseProxy:
+    ) -> hikari.Message:
         """
-        Edits the message that this object is proxying. Shortcut for :obj:`hikari.messages.Message.edit`.
-
-        Args:
-            *args: Args passed in to :obj:`hikari.messages.Message.edit`
-            **kwargs: Kwargs passed in to :obj:`hikari.messages.Message.edit`
+        Edits the message that this object is proxying.
 
         Returns:
             :obj:`~hikari.messages.Message`: New message after edit.
         """
         if self._message:
-            message = await self._context.interaction.edit_message(
+            return await self._context.interaction.edit_message(
                 self._message,
                 content,
                 component=component,
@@ -162,9 +158,8 @@ class ResponseProxy:
                 user_mentions=user_mentions,
                 role_mentions=role_mentions,
             )
-            return self._context._create_response(self._message)
 
-        message = await self._context.interaction.edit_initial_response(
+        return await self._context.interaction.edit_initial_response(
             content,
             component=component,
             components=components,
@@ -177,7 +172,6 @@ class ResponseProxy:
             user_mentions=user_mentions,
             role_mentions=role_mentions,
         )
-        return self._context._create_response(message)
 
     async def delete(self) -> None:
         """
@@ -185,10 +179,6 @@ class ResponseProxy:
 
         Returns:
             ``None``
-
-        Raises:
-            :obj:`~.errors.UnsupportedResponseOperation`: This response cannot be deleted (for some ephemeral
-                interaction responses).
         """
         if self._message:
             await self._context.interaction.delete_message(self._message)
@@ -204,7 +194,7 @@ class Context(abc.ABC):
         app (:obj:`~.app.BotApp`): The ``BotApp`` instance that the context is linked to.
     """
 
-    __slots__ = ("_app", "_responses", "_responded", "_deferred", "_invoked")
+    __slots__ = ("_app", "_responses", "_responded", "_deferred", "_invoked", "_event", "_interaction", "_command")
 
     def __init__(self, app: app_.BotApp, event: hikari.InteractionCreateEvent, command: commands.base.Command):
         self._app = app
@@ -420,11 +410,12 @@ class Context(abc.ABC):
             response_type = hikari.ResponseType.MESSAGE_CREATE
 
         if self._responded:
-            message = await self.interaction.execute(response_type, *args, **kwargs)
+            message = await self.interaction.execute(*args, **kwargs)
             response = self._create_response(message)
         else:
             await self.interaction.create_initial_response(response_type, *args, **kwargs)  # type: ignore [arg-type]
             response = self._create_response()
+            self._responded = True
 
         if delete_after:
             response.delete_after(delete_after)
@@ -446,17 +437,14 @@ class Context(abc.ABC):
             t.Union[hikari.SnowflakeishSequence[hikari.PartialUser], bool]
         ] = hikari.UNDEFINED,
         role_mentions: hikari.UndefinedOr[t.Union[hikari.SnowflakeishSequence[hikari.PartialRole], bool]],
-    ) -> t.Optional[ResponseProxy]:
+    ) -> hikari.Message:
         """
         Edit the most recently sent response. Shortcut for :obj:`hikari.messages.Message.edit`.
 
-        Args:
-            *args: Args passed to :obj:`hikari.messages.Message.edit`.
-            **kwargs: Kwargs passed to :obj:`hikari.messages.Message.edit`.
-
         Returns:
-            Optional[:obj:`~hikari.messages.Message`]: New message after edit, or ``None`` if no responses have
-                been sent for the context yet.
+            :obj:`~hikari.messages.Message`: New message after edit.
+        Raises:
+            ``RuntimeError``: If no responses have been sent for this context yet.
         """
         if not self._responses:
             raise RuntimeError("No responses have been sent for this context yet.")
@@ -481,8 +469,10 @@ class Context(abc.ABC):
 
         Returns:
             ``None``
+        Raises:
+            ``RuntimeError``: If no responses have been sent for this context yet.
         """
         if not self._responses:
-            return
+            raise RuntimeError("No responses have been sent for this context yet.")
 
         await self._responses.pop().delete()

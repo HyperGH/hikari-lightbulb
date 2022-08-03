@@ -470,6 +470,8 @@ class Command(abc.ABC):
         "parent",
         "_plugin",
         "_max_concurrency_semaphores",
+        "_guilds",
+        "instances",
     )
 
     def __init__(self, app: app_.BotApp, initialiser: CommandLike) -> None:
@@ -649,14 +651,14 @@ class Command(abc.ABC):
         try:
             await self.evaluate_checks(context)
             await self.evaluate_cooldowns(context)
-            self._convert_options(context)
+            await self._convert_options(context)
             await self(context, **kwargs)
         except Exception:
             raise
         finally:
             self._release_max_concurrency(context)
 
-    def _convert_options(
+    async def _convert_options(
         self,
         context: context_.base.Context,
         converter_mapping: t.Dict[t.Type[t.Any], t.Type[converters.BaseConverter[t.Any]]] = _APP_CONVERTER_TYPE_MAPPING,
@@ -672,10 +674,10 @@ class Command(abc.ABC):
             option = self.options[name]
             if converter := converter_mapping.get(option.arg_type):
                 try:
-                    context.raw_options[name] = converter(context).convert(value)
-                except TypeError:
+                    context.raw_options[name] = await converter(context).convert(value)
+                except (TypeError, ValueError):
                     raise errors.ConverterFailure(
-                        f"Failed to convert option '{name}' to {option.arg_type}", opt=option, raw=value
+                        f"Failed to convert option '{name}' to '{option.arg_type.__name__}' object.", opt=option, raw=value
                     )
 
     async def evaluate_checks(self, context: context_.base.Context) -> bool:
