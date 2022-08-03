@@ -200,7 +200,6 @@ class Context(abc.ABC):
         self._app = app
         self._responses: t.List[ResponseProxy] = []
         self._responded: bool = False
-        self._deferred: bool = False
         self._invoked: t.Optional[commands.base.Command] = None
         self._event = event
         assert isinstance(event.interaction, hikari.CommandInteraction)
@@ -210,11 +209,6 @@ class Context(abc.ABC):
     async def _maybe_defer(self) -> None:
         if (self._invoked or self._command).auto_defer:
             await self.respond(hikari.ResponseType.DEFERRED_MESSAGE_CREATE)
-
-    @property
-    def deferred(self) -> bool:
-        """Whether or not the response from this context is currently deferred."""
-        return self._deferred
 
     @property
     def responses(self) -> t.List[ResponseProxy]:
