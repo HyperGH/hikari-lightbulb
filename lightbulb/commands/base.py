@@ -30,8 +30,8 @@ import typing as t
 
 import hikari
 
+from lightbulb import converters
 from lightbulb import errors
-from lightbulb.converters import special
 
 if t.TYPE_CHECKING:
     from lightbulb import app as app_
@@ -43,12 +43,12 @@ if t.TYPE_CHECKING:
     from lightbulb import plugins
 
 # types that may need to be converted in app commands
-_APP_CONVERTER_TYPE_MAPPING = {
-    hikari.Emoji: special.EmojiConverter,
-    hikari.Message: special.MessageConverter,
-    hikari.Invite: special.InviteConverter,
-    hikari.Color: special.ColourConverter,
-    datetime.datetime: special.TimestampConverter,
+_APP_CONVERTER_TYPE_MAPPING: t.Dict[t.Type[t.Any], t.Type[converters.BaseConverter[t.Any]]] = {
+    hikari.Emoji: converters.special.EmojiConverter,
+    hikari.Message: converters.special.MessageConverter,
+    hikari.Invite: converters.special.InviteConverter,
+    hikari.Color: converters.special.ColourConverter,
+    datetime.datetime: converters.special.TimestampConverter,
 }
 
 _AutocompleteableOptionT = t.Union[str, int, float]
@@ -656,7 +656,11 @@ class Command(abc.ABC):
         finally:
             self._release_max_concurrency(context)
 
-    def _convert_options(self, context: context_.base.Context, converter_mapping: t.Dict[t.Type[t.Any], t.Callable[..., t.Any]] = _APP_CONVERTER_TYPE_MAPPING) -> None:
+    def _convert_options(
+        self,
+        context: context_.base.Context,
+        converter_mapping: t.Dict[t.Type[t.Any], t.Type[converters.BaseConverter[t.Any]]] = _APP_CONVERTER_TYPE_MAPPING,
+    ) -> None:
         """
         Converts the options of the context where needed. This is called upon invocation of the command.
         Override 'converter_mapping' to change what types of options are converted, and with what converters.
@@ -668,7 +672,7 @@ class Command(abc.ABC):
             option = self.options[name]
             if converter := converter_mapping.get(option.arg_type):
                 try:
-                    context.raw_options[name] = converter(value)
+                    context.raw_options[name] = converter(context).convert(value)
                 except TypeError:
                     raise errors.ConverterFailure(
                         f"Failed to convert option '{name}' to {option.arg_type}", opt=option, raw=value
