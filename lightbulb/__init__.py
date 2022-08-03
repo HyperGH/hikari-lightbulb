@@ -152,4 +152,4 @@ from lightbulb.errors import *
 from lightbulb.events import *
 from lightbulb.plugins import *
 
-__version__ = "2.2.4"
+__version__ = "3.0.0"
