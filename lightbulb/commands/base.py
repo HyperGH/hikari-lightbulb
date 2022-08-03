@@ -265,7 +265,7 @@ class CommandLike:
     """Check exempt predicate to use for the command."""
     inherit_checks: bool = False
     """Whether or not the command should inherit checks from the parent group."""
-    pass_options: bool = False
+    pass_options: bool = True
     """Whether or not the command will have its options passed as keyword arguments when invoked."""
     max_concurrency: t.Optional[t.Tuple[int, t.Type[buckets.Bucket]]] = None
     """The max concurrency rule for the command."""
@@ -649,30 +649,29 @@ class Command(abc.ABC):
         try:
             await self.evaluate_checks(context)
             await self.evaluate_cooldowns(context)
-            context = self._convert_options(context)
+            self._convert_options(context)
             await self(context, **kwargs)
         except Exception:
             raise
         finally:
             self._release_max_concurrency(context)
 
-    def _convert_options(self, context: context_.base.Context) -> context_.base.Context:
+    def _convert_options(self, context: context_.base.Context) -> None:
         """
         Converts the options of the context where needed and returns the context.
         """
         if not context.raw_options:
-            return context
+            return
 
         for name, value in context.raw_options.items():
             option = self.options[name]
-            if option.arg_type in _APP_CONVERTER_TYPE_MAPPING:
+            if converter := _APP_CONVERTER_TYPE_MAPPING.get(option.arg_type):
                 try:
-                    context.raw_options[name] = _APP_CONVERTER_TYPE_MAPPING[option.arg_type](value)
+                    context.raw_options[name] = converter(value)
                 except TypeError:
                     raise errors.ConverterFailure(
                         f"Failed to convert option '{name}' to {option.arg_type}", opt=option, raw=value
                     )
-        return context
 
     async def evaluate_checks(self, context: context_.base.Context) -> bool:
         """
