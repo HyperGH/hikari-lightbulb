@@ -677,7 +677,9 @@ class Command(abc.ABC):
                     context.raw_options[name] = await converter(context).convert(value)
                 except (TypeError, ValueError):
                     raise errors.ConverterFailure(
-                        f"Failed to convert option '{name}' to '{option.arg_type.__name__}' object.", opt=option, raw=value
+                        f"Failed to convert option '{name}' to '{option.arg_type.__name__}' object.",
+                        opt=option,
+                        raw=value,
                     )
 
     async def evaluate_checks(self, context: context_.base.Context) -> bool:
