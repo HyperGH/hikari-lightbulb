@@ -658,7 +658,7 @@ class Command(abc.ABC):
 
     def _convert_options(self, context: context_.base.Context, converter_mapping: t.Dict[t.Type[t.Any], t.Callable[..., t.Any]] = _APP_CONVERTER_TYPE_MAPPING) -> None:
         """
-        Converts the options of the context where needed and returns the context. 
+        Converts the options of the context where needed. This is called upon invocation of the command.
         Override 'converter_mapping' to change what types of options are converted, and with what converters.
         """
         if not context.raw_options:
