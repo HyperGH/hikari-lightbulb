@@ -155,7 +155,7 @@ class BotApp(hikari.GatewayBot):
         self._running_tasks: t.List[asyncio.Task[t.Any]] = []
 
         self.subscribe(hikari.StartedEvent, self._manage_application_commands)
-        self.subscribe(hikari.InteractionCreateEvent, self.handle_interaction_create_for_application_commands)
+        self.subscribe(hikari.InteractionCreateEvent, self.handle_interaction_create_for_commands)
         self.subscribe(hikari.InteractionCreateEvent, self.handle_interaction_create_for_autocomplete)
 
     def create_task(self, coro: t.Awaitable[t.Any], *, name: t.Optional[str] = None) -> asyncio.Task[t.Any]:
@@ -216,7 +216,7 @@ class BotApp(hikari.GatewayBot):
                 raise errors.CommandAlreadyExists(f"A user command with name {command.name!r} is already registered.")
             self._user_commands[command.name] = command
 
-    def _get_application_command(self, interaction: hikari.CommandInteraction) -> t.Optional[commands.base.Command]:
+    def _get_command(self, interaction: hikari.CommandInteraction) -> t.Optional[commands.base.Command]:
         if interaction.command_type is hikari.CommandType.SLASH:
             return self.get_slash_command(interaction.command_name)
         elif interaction.command_type is hikari.CommandType.USER:
@@ -821,7 +821,7 @@ class BotApp(hikari.GatewayBot):
             :obj:`~.context.base.Contextt`: Context instance for the given event.
         """
         assert isinstance(event.interaction, hikari.CommandInteraction)
-        cmd = self._get_application_command(event.interaction)
+        cmd = self._get_command(event.interaction)
         if cmd is None:
             return None
 
@@ -870,7 +870,7 @@ class BotApp(hikari.GatewayBot):
         else:
             await self.dispatch(cmd_events[1](app=self, command=context.command, context=context))
 
-    async def handle_interaction_create_for_application_commands(self, event: hikari.InteractionCreateEvent) -> None:
+    async def handle_interaction_create_for_commands(self, event: hikari.InteractionCreateEvent) -> None:
         """
         Application command :obj:`~hikari.events.interaction_events.InteractionCreateEvent` listener. This handles
         fetching the context, dispatching events, and invoking the appropriate command.

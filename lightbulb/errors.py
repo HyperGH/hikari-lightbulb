@@ -128,6 +128,25 @@ class CommandIsOnCooldown(LightbulbError):
         """The amount of time in seconds remaining until the cooldown expires."""
 
 
+class ConverterFailure(LightbulbError):
+    """
+    Error raised when option type conversion fails while command options are being parsed.
+    """
+
+    __slots__ = ("option", "raw_value")
+
+    def __init__(self, *args: t.Any, opt: commands.base.OptionLike, raw: str) -> None:
+        super().__init__(*args)
+        self.option: commands.base.OptionLike = opt
+        """The option that could not be converted."""
+        self.raw_value: str = raw
+        """
+        The value that could not be converted.
+        
+        .. versionadded:: 2.2.1
+        """
+
+
 class MaxConcurrencyLimitReached(LightbulbError):
     """
     Error raised when the maximum number of allowed concurrent invocations for a command

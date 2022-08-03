@@ -31,6 +31,7 @@ import typing as t
 import hikari
 
 from lightbulb import errors
+from lightbulb.converters import special
 
 if t.TYPE_CHECKING:
     from lightbulb import app as app_
@@ -40,6 +41,15 @@ if t.TYPE_CHECKING:
     from lightbulb import cooldowns
     from lightbulb import events
     from lightbulb import plugins
+
+# types that may need to be converted in app commands
+_APP_CONVERTER_TYPE_MAPPING = {
+    hikari.Emoji: special.EmojiConverter,
+    hikari.Message: special.MessageConverter,
+    hikari.Invite: special.InviteConverter,
+    hikari.Color: special.ColourConverter,
+    datetime.datetime: special.TimestampConverter,
+}
 
 _AutocompleteableOptionT = t.Union[str, int, float]
 AutocompleteCallbackT = t.TypeVar(
@@ -639,11 +649,30 @@ class Command(abc.ABC):
         try:
             await self.evaluate_checks(context)
             await self.evaluate_cooldowns(context)
+            context = self._convert_options(context)
             await self(context, **kwargs)
         except Exception:
             raise
         finally:
             self._release_max_concurrency(context)
+
+    def _convert_options(self, context: context_.base.Context) -> context_.base.Context:
+        """
+        Converts the options of the context where needed and returns the context.
+        """
+        if not context.raw_options:
+            return context
+
+        for name, value in context.raw_options.items():
+            option = self.options[name]
+            if option.arg_type in _APP_CONVERTER_TYPE_MAPPING:
+                try:
+                    context.raw_options[name] = _APP_CONVERTER_TYPE_MAPPING[option.arg_type](value)
+                except TypeError:
+                    raise errors.ConverterFailure(
+                        f"Failed to convert option '{name}' to {option.arg_type}", opt=option, raw=value
+                    )
+        return context
 
     async def evaluate_checks(self, context: context_.base.Context) -> bool:
         """

@@ -36,7 +36,6 @@ import functools
 import inspect
 import operator
 import typing as t
-import warnings
 
 import hikari
 
