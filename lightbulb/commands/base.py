@@ -656,16 +656,17 @@ class Command(abc.ABC):
         finally:
             self._release_max_concurrency(context)
 
-    def _convert_options(self, context: context_.base.Context) -> None:
+    def _convert_options(self, context: context_.base.Context, converter_mapping: t.Dict[t.Type[t.Any], t.Callable[..., t.Any]] = _APP_CONVERTER_TYPE_MAPPING) -> None:
         """
-        Converts the options of the context where needed and returns the context.
+        Converts the options of the context where needed and returns the context. 
+        Override 'converter_mapping' to change what types of options are converted, and with what converters.
         """
         if not context.raw_options:
             return
 
         for name, value in context.raw_options.items():
             option = self.options[name]
-            if converter := _APP_CONVERTER_TYPE_MAPPING.get(option.arg_type):
+            if converter := converter_mapping.get(option.arg_type):
                 try:
                     context.raw_options[name] = converter(value)
                 except TypeError:
