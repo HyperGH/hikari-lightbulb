@@ -31,6 +31,7 @@ import typing as t
 
 import hikari
 
+from lightbulb import converters
 from lightbulb import errors
 
 if t.TYPE_CHECKING:
@@ -656,6 +657,17 @@ class Command(abc.ABC):
         """The command's text signature."""
         ...
 
+    @abc.abstractmethod
+    async def _convert_options(
+        self,
+        context: context_.base.Context,
+        converter_mapping: t.Dict[t.Type[t.Any], t.Type[converters.BaseConverter[t.Any]]],
+    ) -> None:
+        """
+        Converts the options of the context where needed. This is called upon invocation of the command.
+        Override 'converter_mapping' to change what types of options are converted, and with what converters.
+        """
+        
     async def _evaluate_max_concurrency(self, context: context_.base.Context) -> None:
         if self.max_concurrency is None:
             return
